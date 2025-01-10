@@ -121,7 +121,9 @@ function usersetup
     if ! id bfa >/dev/null 2>&1
     then
         info "Adding required user \"bfa\""
-        adduser --disabled-password --gecos 'Blockchain Federal Argentina' bfa
+        adduser --gecos "" --disabled-login ...
+
+        #adduser --disabled-password --gecos 'Blockchain Federal Argentina' bfa
         info "Adding user \"bfa\" to group \"sudo\""
         adduser bfa sudo
     fi
