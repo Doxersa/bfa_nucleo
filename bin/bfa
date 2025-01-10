@@ -1,0 +1,386 @@
+#!/bin/bash
+# Robert Martin-Legene <robert@nic.ar>
+
+if [ -z "${BFAHOME}" ]; then echo "\$BFAHOME not set. Did you source bfa/bin/env ?" >&2; exit 1; fi
+# shellcheck disable=SC1090
+source "${BFAHOME}/bin/libbfa.sh" || exit 1
+
+declare -A commands help
+TOMLCONFIGFILE="${BFANETWORKDIR}/config.full+archive+nohttp"
+
+function    register_subcommand
+{
+    declare -g commands help
+    commands[$1]=$2
+    help[$1]=$3
+}
+
+function    _usage()
+{
+    local after c
+    after=''
+    for c in $(echo "${!commands[@]}" | sort)
+    do
+        after="${after}|$c"
+    done
+    echo "Usage: $(basename "$0") {${after:1}}" >&2
+    for c in $(echo "${!commands[@]}" | sort)
+    do
+        printf '%-15s %s\n' "$c" "${help[$c]}" >&2
+    done
+    trap - ERR
+    exit 1
+}
+
+function    _max
+{
+    test "$1" -lt "$2" && echo "$2"
+    echo "$1"
+}
+
+function    pidsfromsigfiles
+{
+    local pids pid file
+    pids=
+    for file in \
+        "${BFANETWORKDIR}/bootnode.pid"           \
+        "${BFANETWORKDIR}/start-bootnode-loop.pid"\
+        "${BFANODEDIR}/monitor.pid"               \
+        "${BFANODEDIR}/start-monitor-loop.pid"    \
+        "${BFANODEDIR}/geth.pid"                  \
+        "${BFANODEDIR}/start-geth-loop.pid"
+    do
+        test -r "$file" || continue
+        pid=$(< "$file")
+        if ! [[ "$pid" =~ ^[0-9]+$ ]]
+        then
+            rm -f "$file"
+            continue
+        fi
+        if ! kill -0 "$pid" >/dev/null 2>/dev/null
+        then
+            rm -f "$file"
+            continue
+        fi
+        pids="$pids $pid"
+    done
+    echo "${pids# }"
+}
+
+register_subcommand 'ps' 'psprocs' 'Show processes relating to known .pid files'
+function    psprocs
+{
+    pids=$(pidsfromsigfiles)
+    if [ -z "$pids" ]
+    then
+        echo "There are no processes of interest." >&2
+        return 1
+    fi
+    # shellcheck disable=SC2086
+    ps -p ${pids// /,}
+}
+
+register_subcommand 'top' 'topprocs' 'Show relevant processes in top.'
+function    topprocs
+{
+    pids=$(pidsfromsigfiles)
+    if [ -z "$pids" ]
+    then
+        echo "There are no processes of interest." >&2
+        return 1
+    fi
+    # shellcheck disable=SC2086
+    local args pid
+    args=
+    # shellcheck disable=SC2086
+    for pid in $pids
+    do
+        args="$args -p $pid"
+    done
+    # shellcheck disable=SC2086
+    exec top $args
+}
+
+function    sendsig
+{
+    local signal pids
+    signal=$1
+    shift
+    pids="$*"
+    if [ -z "$pids" ]
+    then
+        return
+    fi
+    # shellcheck disable=SC2086
+    ps -p ${pids// /,}
+    echo "Sending ${signal} signal to pid $pids."
+    # shellcheck disable=SC2086
+    kill "$signal" $pids || true
+}
+
+register_subcommand 'kill' 'killbfastuff' 'Hard kill BFA background processes (BAD IDEA! Use stop instead).'
+function    killbfastuff
+{
+    local pids
+    pids=$(pidsfromsigfiles)
+    if [ -z "$pids" ]
+    then
+        echo "Nothing to send signals to." >&2
+        return 2
+    fi
+    sendsig -KILL "$pids"
+}
+
+register_subcommand 'stop' 'graceful' 'Ask the BFA background processes to end gracefully.'
+function    graceful
+{
+    local max pids
+    max=30
+    pids=$(pidsfromsigfiles)
+    if [ -z "$pids" ]
+    then
+        echo "Nothing to send signals to." >&2
+        return 1
+    fi
+    sendsig -TERM "$pids"
+    sleep 1
+    while :
+    do
+        pids=$(pidsfromsigfiles)
+        max=$((max - 1))
+        test "$max" -gt 0 || break
+        test -n "$pids" || break
+        printf '\rThese are still alive: %s\x1b[J' "$pids"
+        sleep 0.5
+    done
+    printf '\r\x1b[J'
+    if [ -n "$pids" ]
+    then
+        printf 'This/these pids is/are still running: %s\n' "$pids"
+    fi
+}
+
+register_subcommand 'initdb' 'initdb' 'Stop geth and reset the node to block zero (genesis).'
+function    initdb
+{
+    killbfastuff || true
+    yes | geth --cache 0 --datadir "${BFANODEDIR}" removedb
+    geth --networkid "${BFANETWORKID}" --cache 0 --datadir "${BFANODEDIR}" init "${BFANETWORKDIR}/genesis.json"
+}
+
+register_subcommand 'exportdb' 'exportdb' 'Export blockchain in chunks of 1 million blocks per file.'
+function    exportdb
+{
+    local million maxblocks blockstart toblock filename
+    million=1000000
+    graceful || true
+    maxblocks=$(bfageth --exec 'eth.blockNumber' console 2> /dev/null)
+    # 0 is genesis.. shouldn't dump that
+    blockstart=1
+    while [ "$blockstart" -lt "$maxblocks" ]
+    do
+        toblock=$(( blockstart + million - 1 ))
+        test "$toblock" -gt "$maxblocks" &&
+            toblock=$maxblocks
+        printf -v filename 'bfa2018.blocks.%09d-%09d.export.gz' "$blockstart" "$toblock"
+        if [ ! -e "$filename" ]
+        then
+                echo "Dumping blocks# $blockstart to $toblock to the file named $filename"
+                bfageth export "$filename" "$blockstart" "$toblock"
+        fi
+        blockstart=$(( toblock + 1 ))
+    done
+}
+
+register_subcommand 'importdb' 'importdb' 'Import blocks safely from previous block exports.'
+function    importdb
+{
+    local dumpurl million blockstart continue_at haveblocks theirsize oursize
+    dumpurl="https://s3.wasabisys.com/bfa/blockdumps"
+    million=1000000
+    graceful || true
+    haveblocks=$(bfageth --exec 'eth.blockNumber' console 2> /dev/null)
+    blockstart=$((haveblocks/million*million+1))
+    while :
+    do
+        printf -v filename 'bfa2018.blocks.%09d-%09d.export.gz' "$blockstart" "$((blockstart + million - 1))"
+	blockstart=$((blockstart + million))
+	theirsize=$(curl --head "${dumpurl}/${filename}" 2>/dev/null | grep -i '^Content-Length: ' | head -1)
+        if [ -z "$theirsize" ]
+        then
+            break
+        fi
+        theirsize="${theirsize//*: }"
+        # remove trailing newline
+        theirsize="${theirsize%$'\r'}"
+        #
+	unset oursize continue_at
+        if [ -r "$filename" ]
+        then
+            oursize=$(stat -c %s "$filename")
+            continue_at="--continue-at $oursize"
+        fi
+        if [ "${oursize:-0}" -lt "$theirsize" ]
+        then
+            echo "Downloading $filename"
+            curl --fail $continue_at -o "$filename" "${dumpurl}/${filename}" || break
+        fi
+        # shellcheck disable=SC2086
+        bfageth import <(gzip -dc "$filename")
+        rm -f "$filename"
+    done
+}
+
+register_subcommand 'bootnode' 'admin_bootnode' 'Enable/disable the local bootnode.'
+function    admin_bootnode
+{
+    keyfile="${BFANETWORKDIR}/bootnode/key"
+    echo "Only very few wants to actually run a boot node."
+    echo "If you have a keyfile for a bootnode, then you will"
+    echo "automatically start one, when restarting your system."
+    if [ -f "$keyfile" ]
+    then
+        echo "You are set up to run a boot node."
+        echo "Deleting your bootnode keyfile disables your bootnode."
+        yesno n "Do you want to delete your bootnode keyfile?"
+        if [ "$REPLY" = "y" ]
+        then
+            rm "$keyfile"
+        fi
+        pidfile="${BFANETWORKDIR}/bootnode/pid"
+        if [ -r "$pidfile" ]
+        then
+            pid=$(< "$pidfile")
+            if kill -0 "$pid"
+            then
+                echo "Terminating your bootnode."
+                kill "$(< "$pidfile")" || true
+            fi
+        fi
+    else
+        echo "You are not set up to run a boot node."
+        yesno n "Do you want to create a keyfile for a bootnode?"
+        if [ "$REPLY" = "y" ]
+        then
+            bootnode -genkey "$keyfile"
+        fi
+        echo "You can now start your bootnode by running start.sh"
+    fi
+}
+
+register_subcommand 'account' 'bfaaccount' 'Account manipulation.'
+function    bfaaccount
+{
+    case "$1" in
+        'create')
+            exec create_account
+            ;;
+        *)
+            echo "Usage: $0 account create" >&2
+            echo ' create' 'Create an extra account locally on the node.' >&2
+            exit 1
+            ;;
+    esac
+}
+
+function    create_account
+{
+    local num filename plural
+    num=0
+    for filename in "${BFANODEDIR}"/keystore/*
+    do
+        test -f "$filename" &&
+            num=$(( num + 1 ))
+    done
+    if [ "$num" -gt 0 ]
+    then
+        plural=""
+        if [ "$num" -ne 1 ]
+        then
+            plural="s"
+        fi
+        yesno n "You already have ${num} account${plural}. Do you wish to create an extra?"
+        if [ "$REPLY" = "n" ]
+        then
+            return
+        fi
+    fi
+    geth --cache 0 --datadir "${BFANODEDIR}" --password /dev/null account new
+}
+
+register_subcommand 'truncatelog' 'truncatelog' \
+    'Truncate the log file. You may want to stop the background processes first.'
+function    truncatelog
+{
+    true > "${BFANODEDIR}/log"
+}
+
+register_subcommand 'geth' 'bfageth' 'Start geth for BFA.'
+function    bfageth
+{
+    if [ -z "$*" ]
+    then
+        echo "You should not run this command without any arguments. Start the background processes with start.sh instead." >&2
+        exit 1
+    fi
+    local DATACFG
+    # Strange how it seems to ignore this variable from the config file
+    DATACFG=$(sed --regexp-extended -ne '/^\[Node\]$/,/^$/{/^DataDir *=/{s/^.*= *"(..*)"$/--datadir \1/;p}}' "${TOMLCONFIGFILE}")
+    geth --config "${TOMLCONFIGFILE}" $DATACFG "$@"
+}
+
+function    bfaadmin
+{
+    case "$1" in
+        'bootnode')
+            admin_bootnode
+            ;;
+        'account')
+            create_account
+            ;;
+        *)
+            echo "Usage: $(basename "$0") {bootnode|account}"
+            trap '' ERR
+            exit 1
+    esac
+}
+
+register_subcommand 'tail' 'bfatail' 'tail -f on the logfile.'
+function    bfatail
+{
+            exec tail -n 100 -F "${BFANODEDIR}/log"
+            exit 1
+}
+
+register_subcommand 'log' 'bfalog' 'Open the logfile with less(1).'
+function    bfalog
+{
+            exec less "${BFANODEDIR}/log"
+            exit 1
+}
+
+function    main
+{
+    case "$(basename "$0")" in
+        'bfa')
+            local cmd
+            cmd=$1
+            shift || _usage
+            test -n "$cmd" || _usage
+            test -n "${commands[$cmd]}" || _usage
+            # shellcheck disable=SC2086
+            eval ${commands[$cmd]} "$@"
+            ;;
+        'admin.sh')
+            bfaadmin "$@"
+            ;;
+        'bfalog.sh')
+            bfatail
+            ;;
+        'bfageth')
+            bfageth "$@"
+            exit 1
+    esac
+}
+
+main "$@"
