@@ -102,8 +102,12 @@ function initgenesis
         fi
     )
 }
+function aptinstall {
+    yum install -y "$@"
+}
 
-function aptinstall
+
+function aptinstall_old
 {
     for pkg in $*
     do
