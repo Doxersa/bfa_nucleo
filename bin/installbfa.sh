@@ -55,7 +55,7 @@ function nodejsinstall
     if [ ! -r "$file" ]
     then
         info "Adding nodejs repository to apt sources."
-        echo "deb https://deb.nodesource.com/node_16.x $(lsb_release -sc) main" > $file
+        echo "deb https://deb.nodesource.com/node_10.x $(lsb_release -sc) main" > $file
         info "And now updating the software package list."
         apt update
     fi
@@ -201,6 +201,35 @@ function setupquestions
     fi
 }
 
+function gethinstallFIXED
+{
+    echo "==================================================================="
+    echo " gethinstallFIXED - install go"
+    echo " URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8 "
+    echo "==================================================================="
+
+    # Instalá la última versión de golang
+    wget https://golang.org/dl/go1.17.2.linux-amd64.tar.gz
+    rm -rf /usr/local/go
+    tar -C /usr/local -xzf go1.17.2.linux-amd64.tar.gz
+    export PATH=$PATH:/usr/local/go/bin
+    go version
+
+
+    echo "==================================================================="
+    echo " gethinstallFIXED - install geth"
+    echo " URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8 "
+    echo "==================================================================="
+
+    # Instalá Go Ethereum (geth)
+    add-apt-repository -y ppa:ethereum/ethereum
+    apt-get update
+    apt-get -y install ethereum
+    geth version
+
+}
+
+
 usersetup
 setupquestions
 # Ubuntu necesita mas repos
@@ -208,11 +237,13 @@ grep -q Ubuntu /etc/issue && apt-add-repository multiverse
 #
 apt update
 # development tools
-aptinstall dirmngr apt-transport-https curl git curl build-essential sudo software-properties-common golang
+aptinstall dirmngr apt-transport-https curl git curl build-essential sudo software-properties-common wget
 aptinstall jq libjson-perl libwww-perl libclass-accessor-perl
 userconfig
 nodejsinstall
-gethinstall
+# fix URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8
+gethinstallFIXED
+#gethinstall
 initgenesis
 cronit
 welcome
