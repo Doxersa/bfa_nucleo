@@ -55,7 +55,7 @@ function nodejsinstall
     if [ ! -r "$file" ]
     then
         info "Adding nodejs repository to apt sources."
-        echo "deb https://deb.nodesource.com/node_10.x $(lsb_release -sc) main" > $file
+        echo "deb https://deb.nodesource.com/node_16.x $(lsb_release -sc) main" > $file
         info "And now updating the software package list."
         apt update
     fi
