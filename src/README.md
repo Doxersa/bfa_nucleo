@@ -1,6 +1,6 @@
 ## Stamper.sol 
 
-[Stamper.sol](https://gitlab.bfa.ar/blockchain/nucleo/blob/master/src/Stamper.sol) es un smart contract simple que puede utilizarse para una _timestamp authority_ o para cualquier caso en el que quiera registrarse cosas del tipo: 
+[Stamper.sol](https://github.com/Doxersa/bfa_nucleo/blob/main/src/Stamper.sol) es un smart contract simple que puede utilizarse para una _timestamp authority_ o para cualquier caso en el que quiera registrarse cosas del tipo: 
 
 * qué, quién, cuándo
 * qué, dónde, cuándo
