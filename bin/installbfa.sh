@@ -222,9 +222,9 @@ function gethinstallFIXED
     echo "==================================================================="
 
     # Instalá Go Ethereum (geth)
-    add-apt-repository -y ppa:ethereum/ethereum
-    apt-get update
-    apt-get -y install ethereum
+    wget https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.13.13-7f131dcb.tar.gz
+    tar -zxvf geth-linux-amd64-1.13.13-7f131dcb.tar.gz
+    sudo mv ./geth-linux-amd64-1.13.13-7f131dcb/geth /usr/local/bin/    
     geth version
 
 }

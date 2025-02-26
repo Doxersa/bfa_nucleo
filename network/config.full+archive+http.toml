@@ -12,7 +12,6 @@ BootstrapNodesV5 = ["enode://7ec4dd9d5e1a2b29d6b60aa9f95677c0c3a5f9306e73d65dd3b
 DataDir = "/home/bfa/bfa/network/node"
 HTTPHost = "0.0.0.0"
 HTTPCors = ["*"]
-omitempty = ""
 IPCPath = "geth.ipc"
 HTTPPort = 8545
 HTTPVirtualHosts = ["*"]
