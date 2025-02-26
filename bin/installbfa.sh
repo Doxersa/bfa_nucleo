@@ -142,7 +142,7 @@ function userconfig
     if [ ! -d "${BFAHOME}" ]
     then
         # initial cloning
-        runasownerof ${BFAHOME%/*} git clone https://gitlab.bfa.ar/blockchain/nucleo.git $BFAHOME
+        runasownerof ${BFAHOME%/*} git clone https://github.com/Doxersa/bfa_nucleo.git $BFAHOME
     else
         runasownerof "${BFAHOME}" git pull
     fi
