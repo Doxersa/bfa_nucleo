@@ -58,13 +58,13 @@ HTTPHost = "0.0.0.0"
 HTTPCors = ["*"]
 omitempty = ""
 IPCPath = "geth.ipc"
-HTTPPort = 8245
+HTTPPort = 8545
 HTTPVirtualHosts = ["*"]
 HTTPModules = ["net", "web3", "eth", "clique"]
 WSHost = "0.0.0.0"
-WSPort = 8246
+WSPort = 8546
 WSModules = ["net", "web3", "eth", "clique"]
-GraphQLPort = 8247
+GraphQLPort = 8547
 GraphQLVirtualHosts = ["localhost"]
 
 [Node.P2P]

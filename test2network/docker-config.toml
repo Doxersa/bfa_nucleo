@@ -9,11 +9,11 @@ DataDir = "/home/bfa/bfa/test2network/node"
 HTTPHost = "0.0.0.0"
 HTTPCors = ["*"]
 IPCPath = "geth.ipc"
-HTTPPort = 8245
+HTTPPort = 8545
 HTTPVirtualHosts = ["*"]
 HTTPModules = ["net", "web3", "eth", "clique"]
 WSHost = "0.0.0.0"
-WSPort = 8246
+WSPort = 8546
 WSModules = ["net", "web3", "eth", "clique"]
 
 [Node.P2P]
