@@ -142,7 +142,7 @@ function userconfig
     if [ ! -d "${BFAHOME}" ]
     then
         # initial cloning
-        runasownerof ${BFAHOME%/*} git clone https://github.com/Doxersa/bfa_nucleo.git $BFAHOME
+        runasownerof ${BFAHOME%/*} git clone https://gitlab.bfa.ar/blockchain/nucleo.git $BFAHOME
     else
         runasownerof "${BFAHOME}" git pull
     fi
@@ -201,35 +201,6 @@ function setupquestions
     fi
 }
 
-function gethinstallFIXED
-{
-    echo "==================================================================="
-    echo " gethinstallFIXED - install go"
-    echo " URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8 "
-    echo "==================================================================="
-
-    # Instalá la última versión de golang
-    wget https://golang.org/dl/go1.17.2.linux-amd64.tar.gz
-    rm -rf /usr/local/go
-    tar -C /usr/local -xzf go1.17.2.linux-amd64.tar.gz
-    export PATH=$PATH:/usr/local/go/bin
-    go version
-
-
-    echo "==================================================================="
-    echo " gethinstallFIXED - install geth"
-    echo " URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8 "
-    echo "==================================================================="
-
-    # Instalá Go Ethereum (geth)
-    wget https://gethstore.blob.core.windows.net/builds/geth-linux-amd64-1.13.13-7f131dcb.tar.gz
-    tar -zxvf geth-linux-amd64-1.13.13-7f131dcb.tar.gz
-    sudo mv ./geth-linux-amd64-1.13.13-7f131dcb/geth /usr/local/bin/    
-    geth version
-
-}
-
-
 usersetup
 setupquestions
 # Ubuntu necesita mas repos
@@ -237,13 +208,11 @@ grep -q Ubuntu /etc/issue && apt-add-repository multiverse
 #
 apt update
 # development tools
-aptinstall dirmngr apt-transport-https curl git curl build-essential sudo software-properties-common wget
+aptinstall dirmngr apt-transport-https curl git curl build-essential sudo software-properties-common golang
 aptinstall jq libjson-perl libwww-perl libclass-accessor-perl
 userconfig
 nodejsinstall
-# fix URL: https://gitlab.bfa.ar/blockchain/nucleo/-/issues/8
-gethinstallFIXED
-#gethinstall
+gethinstall
 initgenesis
 cronit
 welcome
